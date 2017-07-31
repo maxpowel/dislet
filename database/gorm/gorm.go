@@ -19,8 +19,8 @@ type Config struct {
 
 func NewConnection(dialect string, uri string) *gorm.DB {
 	db, err := gorm.Open(dialect, uri)
-	fmt.Println(uri)
-	db.LogMode(true)
+	//fmt.Println(uri)
+	//db.LogMode(true)
 	fmt.Println("CREANDO CONEXION")
 	if err != nil {
 		log.Fatal(err)
