@@ -8,6 +8,7 @@ import (
 	"encoding/base64"
 	"bytes"
 	"fmt"
+	"github.com/maxpowel/dislet"
 )
 
 type User struct {
@@ -19,12 +20,12 @@ type User struct {
 }
 
 
-func NewUser() User {
+func NewUser() *User {
 	// Just initialize a random salt
 	saltSize := 16
 	salt := make([]byte, saltSize)
 	rand.Read(salt)
-	return User{
+	return &User{
 		Salt:base64.URLEncoding.EncodeToString(salt),
 	}
 }
@@ -57,4 +58,42 @@ func CheckPassword(user *User, plainPassword string) (error) {
 	} else {
 		return fmt.Errorf("Password does not match")
 	}
+}
+
+
+type Manager struct {
+	k *dislet.Kernel
+}
+
+func (m* Manager) LoadUser(userId uint) (*User, error) {
+	db := m.k.Container.MustGet("database").(*gorm.DB)
+	user := User{}
+	if db.First(&user, userId).RecordNotFound() {
+		return nil, fmt.Errorf("User not found")
+	} else {
+		return &user, nil
+	}
+}
+
+func (m* Manager) FindUser(username string) (*User, error) {
+	db := m.k.Container.MustGet("database").(*gorm.DB)
+	user := User{}
+	if db.Where(&User{Username: username}).First(&user).RecordNotFound() {
+		return nil, fmt.Errorf("User not found")
+	} else {
+		return &user, nil
+	}
+}
+
+func Bootstrap(k *dislet.Kernel) {
+	//mapping := k.Config.Mapping
+	iny := func() *Manager{
+		return &Manager{k: k}
+	}
+	k.Container.RegisterType("user_manager", iny)
+
+	/*var baz dislet.OnKernelReady = func(k *dislet.Kernel){
+
+	}
+	k.Subscribe(baz)*/
 }

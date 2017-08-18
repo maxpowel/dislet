@@ -5,11 +5,8 @@ import (
 	"github.com/fatih/color"
 	"net/http"
 	"github.com/gorilla/mux"
-	"github.com/RangelReale/osin"
 	"github.com/RichardKnop/machinery/v1/tasks"
 	"github.com/RichardKnop/machinery/v1"
-	"github.com/garyburd/redigo/redis"
-	"github.com/ShaleApps/osinredis"
 	"github.com/golang/protobuf/proto"
 
 	"github.com/ulule/deepcopier"
@@ -19,10 +16,16 @@ import (
 	"github.com/maxpowel/dislet/apirest/protomodel"
 	mprotomodel "github.com/maxpowel/dislet/machinery/protomodel"
 
+	"strings"
+	"github.com/dgrijalva/jwt-go"
+	"encoding/base64"
+	"github.com/maxpowel/dislet/usermngr"
+	"time"
 )
 
 type Config struct {
 	Port int
+	Hmac string
 }
 
 
@@ -131,8 +134,8 @@ func TaskResponseHandler(result *tasks.TaskState) ([]byte, error){
 		}
 	}
 
-		fmt.Println(result)
-		/**/
+	fmt.Println(result)
+	/**/
 
 
 	return proto.Marshal(&ts)
@@ -163,7 +166,7 @@ func Validate(data interface{}, validatorI interface{}) (*interface{}, error) {
 }
 
 // TODO MOVER a un sitio correcto
-func NewRedisStorage() (*osinredis.Storage){
+/*func NewRedisStorage() (*osinredis.Storage){
 	pool := &redis.Pool{
 		Dial: func() (redis.Conn, error) {
 			conn, err := redis.Dial("tcp", ":6379")
@@ -187,15 +190,14 @@ func NewOAuthServer(k *dislet.Kernel) *osin.Server {
 	oauthConfig := osin.NewServerConfig()
 	oauthConfig.AllowedAccessTypes = osin.AllowedAccessType{osin.PASSWORD}
 	return osin.NewServer(oauthConfig, NewRedisStorage())
-}
+}*/
 
 func NewApiRest(k *dislet.Kernel, port int) *mux.Router {
 
 	router := mux.NewRouter().StrictSlash(true)
 
-
-	k.Container.RegisterType("oauth", NewOAuthServer, k)
-	k.Container.MustGet("oauth")
+	//k.Container.RegisterType("oauth", NewOAuthServer, k)
+	//k.Container.MustGet("oauth")
 
 
 	// Authorization code endpoint
@@ -228,8 +230,8 @@ func NewApiRest(k *dislet.Kernel, port int) *mux.Router {
 		osin.OutputJSON(resp, w, r)
 	})*/
 
-//authorize?response_type=code&client_id=1234&redirect_uri=http%3A%2F%2Flocalhost%3A14000%2Fappauth%2Fcode
-//curl 'http://localhost:8090/token' -d 'grant_type=password&username=pepe&password=21212&client_id=pepe' -H 'Authorization: Basic cGVwZTpsb2xhem8='
+	//authorize?response_type=code&client_id=1234&redirect_uri=http%3A%2F%2Flocalhost%3A14000%2Fappauth%2Fcode
+	//curl 'http://localhost:8090/token' -d 'grant_type=password&username=pepe&password=21212&client_id=pepe' -H 'Authorization: Basic cGVwZTpsb2xhem8='
 	// Access token endpoint
 	//router.Handle("/token", Handler{k, CheckToken})
 
@@ -239,6 +241,77 @@ func NewApiRest(k *dislet.Kernel, port int) *mux.Router {
 	return router
 }
 
+func GenerateToken(k *dislet.Kernel, user *usermngr.User) (string, error){
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+		"iss": "wixet:45", //Lo pide la app wixet con el id 45
+		"sub": user.ID, //El id del usuario logeado
+		"iat": time.Now().Unix(), //issued at time, cuando se pidio el token: UTC Unix
+		//"exp": time.Now().Add(time.Minute * 1440), // One day
+		"exp": time.Now().AddDate(1,0,0).Unix(),
+		"nbf": time.Now().Unix(),
+	})
+
+
+	c := k.Config.Mapping["api"].(*Config)
+	decoded, err := base64.StdEncoding.DecodeString(c.Hmac)
+	if err != nil {
+		return "", err
+	}
+	// Sign and get the complete encoded token as a string using the secret
+	return token.SignedString(decoded)
+}
+
+func VerifyRequest(k *dislet.Kernel, r *http.Request) (jwt.MapClaims, error) {
+	authHeader := r.Header.Get("Authorization")
+	t := strings.Split(authHeader," ")
+	if len(t) != 2 {
+		return nil, fmt.Errorf("Please provide an authorization bearer token")
+	}
+
+
+	c := k.Config.Mapping["api"].(*Config)
+	decoded, err := base64.StdEncoding.DecodeString(c.Hmac)
+	if err != nil {
+		return nil, err
+	}
+
+	token, err := jwt.Parse(t[1], func(token *jwt.Token) (interface{}, error) {
+		// Don't forget to validate the alg is what you expect:
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, fmt.Errorf("Unexpected signing method: %v", token.Header["alg"])
+		}
+
+		// hmacSampleSecret is a []byte containing your secret, e.g. []byte("my_secret_key")
+		return decoded, nil
+	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	claims, ok := token.Claims.(jwt.MapClaims)
+	if  !ok && token.Valid {
+		return nil, err
+	}
+
+	return claims, nil
+}
+
+func GetUser(k *dislet.Kernel, r *http.Request) (*usermngr.User, error) {
+	claims, err := VerifyRequest(k, r)
+	if err != nil {
+		return nil, err
+	}
+
+	//userId, err := strconv.ParseUint(claims["sub"].(string), 10, 32)
+	/*if err != nil {
+		return nil, err
+	}*/
+
+	userId := uint(claims["sub"].(float64))
+	userManager := k.Container.MustGet("user_manager").(*usermngr.Manager)
+	return userManager.LoadUser(uint(userId))
+}
 
 func Bootstrap(k *dislet.Kernel) {
 	//fmt.Println("DATABASE BOOT")
@@ -254,8 +327,5 @@ func Bootstrap(k *dislet.Kernel) {
 
 	}
 	k.Subscribe(baz)
-
-
-
 
 }
