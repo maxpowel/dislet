@@ -52,11 +52,6 @@ func (se StatusError) Status() int {
 	return se.Code
 }
 
-type Handler struct {
-	*dislet.Kernel
-	H func(k *dislet.Kernel, w http.ResponseWriter, r *http.Request) error
-}
-
 func GetBody(protoMessage proto.Message, r *http.Request) (error){
 	buf, err := ioutil.ReadAll(r.Body)
 	if err != nil {
@@ -65,27 +60,24 @@ func GetBody(protoMessage proto.Message, r *http.Request) (error){
 	return proto.Unmarshal(buf, protoMessage)
 
 }
-// ServeHTTP allows our Handler type to satisfy http.Handler.
-func (h Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	err := h.H(h.Kernel, w, r)
+
+func processResponse(w http.ResponseWriter, message proto.Message, err error) {
 	if err != nil {
 		switch e := err.(type) {
 		case Error:
 			// We can retrieve the status here and write out a specific
 			// HTTP status code.
 			errorProto := &protomodel.Error{
-				Code: int32(e.Status()),
+				Code:        int32(e.Status()),
 				Description: e.Error(),
 			}
 
 			data, err := proto.Marshal(errorProto)
 
 			if err != nil {
-				http.Error(w, http.StatusText(http.StatusInternalServerError),
-					http.StatusInternalServerError)
+				http.Error(w, http.StatusText(e.Status()),
+					e.Status())
 			}
-
-			w.WriteHeader(http.StatusBadRequest)
 			// Raw binary data is sent
 			w.Write(data)
 		default:
@@ -95,11 +87,50 @@ func (h Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				http.StatusInternalServerError)
 		}
 	}
+
+	if message != nil {
+		data, err := proto.Marshal(message)
+		if err != nil {
+			http.Error(w, http.StatusText(http.StatusInternalServerError),
+				http.StatusInternalServerError)
+		} else {
+			w.Write(data)
+		}
+	}
+}
+type Handler struct {
+	*dislet.Kernel
+	H func(k *dislet.Kernel, w http.ResponseWriter, r *http.Request) (proto.Message, error)
+}
+
+// ServeHTTP allows our Handler type to satisfy http.Handler.
+func (h Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	responseMessage, err := h.H(h.Kernel, w, r)
+	processResponse(w, responseMessage, err)
+}
+
+type SecureHandler struct {
+	*dislet.Kernel
+	H func(k *dislet.Kernel, w http.ResponseWriter, r *http.Request, user *usermngr.User) (proto.Message, error)
+}
+
+// ServeHTTP allows our Handler type to satisfy http.Handler.
+func (h SecureHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+
+	user, err := GetUser(h.Kernel, r)
+	if err != nil {
+		http.Error(w, http.StatusText(http.StatusUnauthorized),
+			http.StatusUnauthorized)
+	} else{
+		responseMessage, err := h.H(h.Kernel, w, r, user)
+		processResponse(w, responseMessage, err)
+	}
 }
 
 
+
 // Format task information. Used everytime your controller runs a task
-func TaskResponseHandler(result *tasks.TaskState) ([]byte, error){
+func TaskResponseHandler(result *tasks.TaskState) (proto.Message){
 	state := mprotomodel.TaskState_UNKWNOWN
 
 	switch result.State {
@@ -112,7 +143,7 @@ func TaskResponseHandler(result *tasks.TaskState) ([]byte, error){
 	}
 
 
-	ts := mprotomodel.TaskStateResponse{
+	ts := &mprotomodel.TaskStateResponse{
 		State: state,
 		ETA: 0,
 		Uid: result.TaskUUID,
@@ -137,19 +168,19 @@ func TaskResponseHandler(result *tasks.TaskState) ([]byte, error){
 	fmt.Println(result)
 	/**/
 
-
-	return proto.Marshal(&ts)
+	return ts
+	//return proto.Marshal(&ts)
 }
 
 // Shortcut to launch a task
-func SendTask(kernel *dislet.Kernel, task *tasks.Signature) ([]byte, error){
+func SendTask(kernel *dislet.Kernel, task *tasks.Signature) (proto.Message, error){
 	server := kernel.Container.MustGet("machinery").(*machinery.Server)
 	asyncResult, err := server.SendTask(task)
 	if err != nil {
 		return nil, err
 	}
 
-	return TaskResponseHandler(asyncResult.GetState())
+	return TaskResponseHandler(asyncResult.GetState()), nil
 }
 
 
