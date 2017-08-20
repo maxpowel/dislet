@@ -25,8 +25,15 @@ func NewConnection(dialect string, uri string) *gorm.DB {
 	if err != nil {
 		log.Fatal(err)
 	}
-	db.Model(&wiphonego.UserDevice{},).Related(&wiphonego.UserDeviceConsumption{})
-	db.AutoMigrate(&wiphonego.UserDevice{}, &wiphonego.UserDeviceConsumption{})
+
+	//db.Model(&wiphonego.UserDevice{}).Related(&wiphonego.UserDeviceConsumption{})
+	db.Model(&wiphonego.Device{}).Related(&wiphonego.PhoneLine{})
+	db.Model(&wiphonego.PhoneLineConsumption{}).Related(&wiphonego.PhoneLine{})
+	db.Model(&wiphonego.PhoneLine{}).Related(&wiphonego.Device{})
+	db.Model(&wiphonego.PhoneLine{}).Related(&wiphonego.Credentials{})
+	db.Model(&wiphonego.Credentials{}).Related(&wiphonego.Operator{})
+
+	db.AutoMigrate(&wiphonego.Device{}, &wiphonego.PhoneLine{}, &wiphonego.PhoneLineConsumption{}, &wiphonego.Credentials{}, &wiphonego.Operator{})
 
 	//db.AutoMigrate(&User{})
 	/*u := NewUser()

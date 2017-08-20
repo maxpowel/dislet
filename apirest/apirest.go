@@ -75,9 +75,12 @@ func processResponse(w http.ResponseWriter, message proto.Message, err error) {
 			data, err := proto.Marshal(errorProto)
 
 			if err != nil {
-				http.Error(w, http.StatusText(e.Status()),
-					e.Status())
+				http.Error(w, http.StatusText(http.StatusInternalServerError),
+					http.StatusInternalServerError)
+			} else {
+				w.WriteHeader(e.Status())
 			}
+
 			// Raw binary data is sent
 			w.Write(data)
 		default:
@@ -127,6 +130,21 @@ func (h SecureHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+type MessageHandler struct {
+	*dislet.Kernel
+	H func(k *dislet.Kernel, w http.ResponseWriter, r *http.Request, message proto.Message) (proto.Message, error)
+	Message proto.Message
+}
+// ServeHTTP allows our Handler type to satisfy http.Handler.
+func (h MessageHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	err := GetBody(h.Message, r)
+	if err != nil {
+		processResponse(w, nil, StatusError{401, err})
+	} else {
+		responseMessage, err := h.H(h.Kernel, w, r, h.Message)
+		processResponse(w, responseMessage, err)
+	}
+}
 
 
 // Format task information. Used everytime your controller runs a task
