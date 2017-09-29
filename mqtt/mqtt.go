@@ -12,6 +12,8 @@ import (
 type Config struct {
 	Hostname string `default:"valor"`
 	Port int `default:"PUERTOOO"`
+	Username string
+	Password string
 	Topic string
 }
 
@@ -77,6 +79,15 @@ func NewClient(conf *Config) mqtt.Client {
 
 	opts.SetDefaultPublishHandler(f)*/
 	opts.SetPingTimeout(1 * time.Second)
+
+	// Auth data
+	if len(conf.Username) > 0 {
+		opts.Username = conf.Username
+	}
+
+	if len(conf.Password) > 0 {
+		opts.Password = conf.Password
+	}
 
 	c := mqtt.NewClient(opts)
 
