@@ -5,7 +5,6 @@ import (
 	"github.com/jinzhu/gorm"
 	"github.com/fatih/color"
 	"github.com/maxpowel/dislet"
-	"github.com/maxpowel/wiphonego"
 	_ "github.com/jinzhu/gorm/dialects/mysql"
 	"log"
 
