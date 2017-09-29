@@ -51,6 +51,13 @@ func (tm *TopicManager) Unsubscribe(topic string) (error){
 //	}()
 }
 
+func (tm *TopicManager) Publish(topic string, payload interface{}) (error) {
+	if token := tm.Client.Publish(topic, 0, false, payload); token.Wait() && token.Error() != nil {
+		return token.Error()
+	}
+	return nil
+}
+
 func NewTopicManager(k *dislet.Kernel, conf *Config) *TopicManager {
 	tm := &TopicManager{
 		Client: k.Container.MustGet("mqtt").(mqtt.Client),
