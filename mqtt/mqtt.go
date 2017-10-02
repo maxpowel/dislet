@@ -47,10 +47,10 @@ func (tm *TopicManager) Unsubscribe(topic string) (error){
 		return token.Error()
 	}
 	return nil
-//	defer func() {
-//		unsubscribeToken := tm.Client.Unsubscribe(topic)
-//		unsubscribeToken.Wait()
-//	}()
+	//	defer func() {
+	//		unsubscribeToken := tm.Client.Unsubscribe(topic)
+	//		unsubscribeToken.Wait()
+	//	}()
 }
 
 func (tm *TopicManager) Publish(topic string, payload interface{}) (error) {
@@ -60,25 +60,19 @@ func (tm *TopicManager) Publish(topic string, payload interface{}) (error) {
 	return nil
 }
 
-func NewTopicManager(k *dislet.Kernel, conf *Config) *TopicManager {
-	tm := &TopicManager{
-		Client: k.Container.MustGet("mqtt").(mqtt.Client),
-		Config: conf,
-	}
-	return tm
 
-}
 func NewClient(conf *Config) mqtt.Client {
+	fmt.Println("CREANDO CLIENTE")
 	opts := mqtt.NewClientOptions().AddBroker(fmt.Sprintf("tcp://%v:%v", conf.Hostname, conf.Port))
-
+	fmt.Println(2 * time.Second)
 	//opts := mqtt.NewClientOptions().AddBroker(fmt.Sprintf("tcp://%v:%v", "a", "b"))
-	opts.SetKeepAlive(2 * time.Second)
+	//opts.SetKeepAlive(2 * time.Second)
 	/*var f mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Message) {
 		color.Blue("TOPIC: %s\n", msg.Topic())
 	}
 
 	opts.SetDefaultPublishHandler(f)*/
-	opts.SetPingTimeout(1 * time.Second)
+	//opts.SetPingTimeout(1 * time.Second)
 
 	// Auth data
 	if len(conf.Username) > 0 {
@@ -89,6 +83,8 @@ func NewClient(conf *Config) mqtt.Client {
 		opts.Password = conf.Password
 	}
 
+	opts.OnConnectionLost = connLostHandler
+
 	c := mqtt.NewClient(opts)
 
 	if token := c.Connect(); token.Wait() && token.Error() != nil {
@@ -98,6 +94,20 @@ func NewClient(conf *Config) mqtt.Client {
 	return c
 }
 
+func connLostHandler(c mqtt.Client, err error) {
+	fmt.Printf("Connection lost, reason: %v\n", err)
+
+	//Perform additional action...
+}
+
+func NewTopicManager(m mqtt.Client, conf *Config) *TopicManager {
+	tm := &TopicManager{
+		Client: m,
+		Config: conf,
+	}
+	return tm
+}
+
 func Bootstrap(k *dislet.Kernel) {
 	mapping := k.Config.Mapping
 	mapping["mqtt"] = &Config{}
@@ -105,13 +115,9 @@ func Bootstrap(k *dislet.Kernel) {
 	var baz dislet.OnKernelReady = func(k *dislet.Kernel){
 		color.Green("Booting mqtt")
 		conf := k.Config.Mapping["mqtt"].(*Config)
-		//conf = k.Config.mapping["mqtt"]
-		// Start mqtt connection
-		//opts := mqtt.NewClientOptions().AddBroker("tcp://iot.eclipse.org:1883").SetClientID("gotrivial")
-		//fmt.Println(fmt.Sprintf("tcp://%v:%v", conf.Hostname, conf.Port))
-
 		k.Container.RegisterType("mqtt", NewClient, conf)
-		k.Container.RegisterType("topic_manager", NewTopicManager, k, conf)
+		c := k.Container.MustGet("mqtt").(mqtt.Client)
+		k.Container.RegisterType("topic_manager", NewTopicManager, c, conf)
 
 
 		service := func() {
