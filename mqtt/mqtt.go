@@ -3,7 +3,6 @@ package mqtt
 import (
 	"fmt"
 	"github.com/eclipse/paho.mqtt.golang"
-	"time"
 	"github.com/fatih/color"
 	"github.com/maxpowel/dislet"
 	"log"
@@ -62,9 +61,7 @@ func (tm *TopicManager) Publish(topic string, payload interface{}) (error) {
 
 
 func NewClient(conf *Config) mqtt.Client {
-	fmt.Println("CREANDO CLIENTE")
 	opts := mqtt.NewClientOptions().AddBroker(fmt.Sprintf("tcp://%v:%v", conf.Hostname, conf.Port))
-	fmt.Println(2 * time.Second)
 	//opts := mqtt.NewClientOptions().AddBroker(fmt.Sprintf("tcp://%v:%v", "a", "b"))
 	//opts.SetKeepAlive(2 * time.Second)
 	/*var f mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Message) {
