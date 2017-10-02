@@ -4,7 +4,6 @@ import (
 	"github.com/fatih/color"
 	"github.com/maxpowel/dislet"
 	"gopkg.in/mgo.v2"
-	"fmt"
 )
 
 type Config struct {
